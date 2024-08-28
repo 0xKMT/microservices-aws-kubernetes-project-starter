@@ -81,10 +81,8 @@ resource "aws_eks_cluster" "udacity_cluster" {
   name     = var.cluster_config.cluster_name
   role_arn = aws_iam_role.demo.arn
   version  = var.cluster_config.cluster_version
-  for_each = toset(data.aws_subnets.default.ids)
-
   vpc_config {
-    subnet_ids = each.value
+    subnet_ids = [for s in data.aws_subnet.default : s.id]
     endpoint_private_access = false
     endpoint_public_access  = true
   }
@@ -101,8 +99,7 @@ resource "aws_eks_node_group" "node-group-udacity" {
   node_group_name = "udacity-nodes-grp"
   node_role_arn   = aws_iam_role.nodes.arn
   version         = var.cluster_config.cluster_version
-  for_each = toset(data.aws_subnets.default.ids)
-  subnet_ids = each.value
+  subnet_ids      = [for s in data.aws_subnet.default : s.id]
 
   capacity_type  = "SPOT"
   instance_types = ["t2.large"]
