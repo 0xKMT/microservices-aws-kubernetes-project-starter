@@ -1,0 +1,134 @@
+name: 'Terraform and Security Scanning'
+
+on:
+  workflow_dispatch:
+    inputs:
+      terraform-deploy:
+        description: 'Run Terraform Job to Deploy AWS Infra (yes/no)'
+        required: true
+        default: 'no'
+      infrastructure-audit:
+        description: 'Run Infrastructure Audit Job (yes/no)'
+        required: true
+        default: 'no'
+      terraform-destroy:
+        description: 'Run Terraform Job to Destroy AWS Infra (yes/no)'
+        required: true
+        default: 'no'
+      
+        
+permissions:
+  id-token: write
+  contents: read 
+env: 
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: ap-southeast-1
+  TF_VERSION: 1.2.6   
+
+jobs:
+  terraform-deploy:
+    name: infrastructure-lab
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.terraform-deploy == 'yes' }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    # - name: Configure AWS Credentials
+    #   uses: aws-actions/configure-aws-credentials@v1
+    #   with:
+    #     aws-region: ${{ env.AWS_REGION }}
+    #     role-to-assume: arn:aws:iam::434605749312:role/aws-deployment-tf
+    #     role-session-name: staging-session    
+    - name: Checkout
+      uses: actions/checkout@v3
+      
+    - name: Setup terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.TF_VERSION }} 
+          
+
+    - name: Terraform Init, Format, Validate
+      run: |
+        ls -la
+        terraform init
+        terraform fmt
+        terraform validate -no-color
+      working-directory: terraform-infra
+      
+    - name: Terraform Plan
+      run: terraform plan -var-file ./dev.terraform.tfvars
+      working-directory: terraform-infra
+    - name: Terraform Apply
+      run: terraform apply --auto-approve -var-file ./dev.terraform.tfvars
+      working-directory: terraform-infra
+      
+
+  infrastructure-audit:
+    name: infrastructure-audit
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.infrastructure-audit == 'yes' }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install tfsec
+      run: |
+        wget -q $(wget -qO- https://api.github.com/repos/aquasecurity/tfsec/releases/latest | grep -o -E "https://[^\"]*linux_amd64.tar.gz") -O tfsec.tar.gz
+        tar -xzf tfsec.tar.gz
+        sudo install tfsec /usr/local/bin/
+      working-directory: terraform-infra
+
+    - name: Run tfsec
+      run: tfsec . --exclude-downloaded-modules --tfvars-file dev.terraform.tfvars
+      working-directory: terraform-infra
+      continue-on-error: true
+
+    - name: Install Checkov
+      run: pip install checkov
+
+    - name: Run Kubernetes YAMLS files Scan
+      run: |
+        checkov -d . --framework kubernetes --download-external-modules true
+      continue-on-error: true
+
+    - name: Run Checkov IAC Scan
+      run: |
+        checkov -d . --framework terraform --download-external-modules true
+      working-directory: terraform-infra 
+      continue-on-error: true
+  
+  terraform-destroy:
+    name: infrastructure-lab-destroy
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.terraform-destroy == 'yes' }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    # - name: Configure AWS Credentials
+    #   uses: aws-actions/configure-aws-credentials@v1
+    #   with:
+    #     aws-region: ${{ env.AWS_REGION }}
+    #     role-to-assume: arn:aws:iam::<account_id>:role/aws-deployment-tf
+    #     role-session-name: staging-session    
+    - name: Checkout
+      uses: actions/checkout@v3
+      
+    - name: Setup terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.TF_VERSION }} 
+    
+    - name: Terraform Destroy
+      run: |
+        ls -la
+        terraform init
+        terraform destroy --auto-approve --var-file=dev.terraform.tfvars
+      working-directory: terraform-infra
+      
