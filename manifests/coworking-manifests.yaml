@@ -11,7 +11,9 @@ spec:
     protocol: TCP
     port: 5153
     targetPort: 5153
+
 ---
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,7 +32,7 @@ spec:
     spec:
       containers:
       - name: coworking
-        image: <DOCKER_IMAGE_URI_FROM_ECR>
+        image: 841135272578.dkr.ecr.ap-southeast-1.amazonaws.com/microproj_udacity:latest
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
@@ -40,17 +42,17 @@ spec:
           timeoutSeconds: 2
         readinessProbe:
           httpGet:
-            path: "/readiness_check"
+            path: /readiness_check
             port: 5153
           initialDelaySeconds: 5
           timeoutSeconds: 5
         envFrom:
         - configMapRef:
-            name: <NAME OF THE ConfigMap>
+            name: env-configmap
         env:
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: <NAME OF THE Secret>
-              key: <THE KEY FROM Secret WHICH has THE ENCODED PASSWORD>
+              name: env-secret
+              key: DB_PASSWORD
       restartPolicy: Always
